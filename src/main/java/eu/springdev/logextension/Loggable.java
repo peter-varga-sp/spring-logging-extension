@@ -11,6 +11,7 @@ import org.springframework.core.annotation.AliasFor;
 @Target({ ElementType.TYPE, ElementType.METHOD })
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Loggable {
+	// specifies if execution time should be included in the log message
 	boolean withExecutionTime() default true;
 
 	boolean logAtMethodEntering() default true;

@@ -32,7 +32,7 @@ public class AopHelperService {
 		result = StringUtils.substring(fullMethodSignature, startIndexOfClassName);
 		signatureCache.put(fullMethodSignature, result);
 
-		logger.info("New cache element for {}", fullMethodSignature);
+		logger.info("New cache element for method signature: {}", fullMethodSignature);
 		return result;
 	}
 

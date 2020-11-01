@@ -62,7 +62,7 @@ public class LoggerAspect {
 	private Object logMethodExecution(ProceedingJoinPoint joinPoint) throws Throwable {
 		LoggableWrapper loggable = new LoggableWrapper(aopHelperService.getLoggableAnnotation(joinPoint));
 
-		Logger loggerOfDeclaringClass = getLogger(joinPoint);
+		Logger loggerOfDeclaringClass = getLoggerFor(joinPoint);
 		String classAndMethodSignature = aopHelperService.getClassAndMethodSignature(joinPoint);
 
 		logMethodEntering(joinPoint, loggable, loggerOfDeclaringClass, classAndMethodSignature);
@@ -76,9 +76,9 @@ public class LoggerAspect {
 			logMethodReturn(joinPoint, loggable, loggerOfDeclaringClass, classAndMethodSignature, elapsedTimeInMs, returnValue);
 			return returnValue;
 
-		} catch (Throwable e) { // NOPMD
-			logException(joinPoint, loggable, loggerOfDeclaringClass, classAndMethodSignature, e);
-			throw e;
+		} catch (Throwable exception) { // NOPMD
+			logException(joinPoint, loggable, loggerOfDeclaringClass, classAndMethodSignature, exception);
+			throw exception;
 		}
 	}
 
@@ -108,7 +108,7 @@ public class LoggerAspect {
 
 	}
 
-	private Logger getLogger(JoinPoint joinPoint) {
+	private Logger getLoggerFor(JoinPoint joinPoint) {
 		return LoggerFactory.getLogger(joinPoint.getSignature().getDeclaringType());
 	}
 
@@ -123,7 +123,7 @@ public class LoggerAspect {
 		String message = "Finished {}";
 		List<Object> argumentsList = new ArrayList<>(4);
 		argumentsList.add(classAndMethodSignature);
-
+		
 		if (joinPoint.getArgs().length > 0 && loggable.shouldLogArgumentsAtReturn()) {
 			message = message + " parameters: {}";
 			argumentsList.add(methodParameterExtractor.getMethodParameters(joinPoint, loggable));
@@ -135,7 +135,7 @@ public class LoggerAspect {
 		}
 
 		if (loggable.shouldLogResultAtReturn()) {
-			if (returnValue != null && loggable.shouldLogResultCollectionSize() && returnValue instanceof Collection) {
+			if (logCollectionSize(loggable, returnValue)) {
 				message = message + " with result " + returnValue.getClass().getSimpleName() + " size: {}";
 				argumentsList.add(((Collection) returnValue).size());
 			} else {
@@ -145,6 +145,10 @@ public class LoggerAspect {
 		}
 
 		doLog(loggerOfDeclaringClass, loggable.getLogLevel(), message, argumentsList.toArray());
+	}
+
+	private boolean logCollectionSize(LoggableWrapper loggable, Object returnValue) {
+		return returnValue != null && loggable.shouldLogResultCollectionSize() && returnValue instanceof Collection;
 	}
 
 	private Object getResultAsString(Object returnValue, LoggableWrapper loggable) {
