@@ -13,15 +13,15 @@ import org.springframework.core.annotation.AliasFor;
 public @interface Loggable {
 	boolean withExecutionTime() default true;
 
-	boolean skipLoggingAtEntering() default false;
+	boolean logAtMethodEntering() default true;
 
-	boolean skipArgumentsAtEntering() default false;
+	boolean logArgumentsAtEntering() default true;
 
-	boolean skipLoggingAtReturn() default false;
+	boolean logAtMethodReturn() default true;
 
-	boolean skipArgumentsAtReturn() default true;
+	boolean logArgumentsAtReturn() default false;
 
-	boolean skipResultAtReturn() default false;
+	boolean logResultAtReturn() default true;
 
 	/**
 	 * If true, logs the size of the Collection parameters, instead of it's content.

@@ -73,8 +73,7 @@ public class LoggerAspect {
 
 			// calculate elapsed time as soon as possible
 			long elapsedTimeInMs = System.currentTimeMillis() - methodExecutionStartTime;
-			logMethodReturn(joinPoint, loggable, loggerOfDeclaringClass, classAndMethodSignature, elapsedTimeInMs,
-					returnValue);
+			logMethodReturn(joinPoint, loggable, loggerOfDeclaringClass, classAndMethodSignature, elapsedTimeInMs, returnValue);
 			return returnValue;
 
 		} catch (Throwable e) { // NOPMD
@@ -93,19 +92,18 @@ public class LoggerAspect {
 		doLog(loggerOfDeclaringClass, loggable.getLogLevelForException(), message, messageArguments);
 	}
 
-	private void logMethodEntering(ProceedingJoinPoint joinPoint, LoggableWrapper loggable,
-			Logger loggerOfDeclaringClass, String classAndMethodSignature) {
+	private void logMethodEntering(ProceedingJoinPoint joinPoint, LoggableWrapper loggable, Logger loggerOfDeclaringClass,
+			String classAndMethodSignature) {
 
-		if (loggable.shouldSkipLoggingAtEntering()) {
+		if (!loggable.shouldLogAtEntering()) {
 			return;
 		}
 
-		if (loggable.shouldSkipArgumentsAtEntering() || joinPoint.getArgs().length == 0) {
-			doLog(loggerOfDeclaringClass, loggable.getLogLevel(), "Entering {}", classAndMethodSignature);
-
+		if (loggable.shouldLogArgumentsAtEntering() && joinPoint.getArgs().length > 0) {
+			String parameters = methodParameterExtractor.getMethodParameters(joinPoint, loggable);
+			doLog(loggerOfDeclaringClass, loggable.getLogLevel(), "Entering {} parameters: {}", classAndMethodSignature, parameters);
 		} else {
-			doLog(loggerOfDeclaringClass, loggable.getLogLevel(), "Entering {} parameters: {}", classAndMethodSignature,
-					methodParameterExtractor.getMethodParameters(joinPoint, loggable));
+			doLog(loggerOfDeclaringClass, loggable.getLogLevel(), "Entering {}", classAndMethodSignature);
 		}
 
 	}
@@ -118,7 +116,7 @@ public class LoggerAspect {
 	private void logMethodReturn(ProceedingJoinPoint joinPoint, LoggableWrapper loggable, Logger loggerOfDeclaringClass,
 			String classAndMethodSignature, long elapsedTimeInMs, Object returnValue) {
 
-		if (loggable.shouldSkipLoggingAtReturn()) {
+		if (!loggable.shouldLogAtReturn()) {
 			return;
 		}
 
@@ -126,7 +124,7 @@ public class LoggerAspect {
 		List<Object> argumentsList = new ArrayList<>(4);
 		argumentsList.add(classAndMethodSignature);
 
-		if (joinPoint.getArgs().length > 0 && !loggable.shouldSkipArgumentsAtReturn()) {
+		if (joinPoint.getArgs().length > 0 && loggable.shouldLogArgumentsAtReturn()) {
 			message = message + " parameters: {}";
 			argumentsList.add(methodParameterExtractor.getMethodParameters(joinPoint, loggable));
 		}
@@ -136,7 +134,7 @@ public class LoggerAspect {
 			argumentsList.add(elapsedTimeInMs);
 		}
 
-		if (!loggable.shouldSkipResultAtReturn()) {
+		if (loggable.shouldLogResultAtReturn()) {
 			if (returnValue != null && loggable.shouldLogResultCollectionSize() && returnValue instanceof Collection) {
 				message = message + " with result " + returnValue.getClass().getSimpleName() + " size: {}";
 				argumentsList.add(((Collection) returnValue).size());
