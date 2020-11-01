@@ -2,17 +2,15 @@ package eu.springdev.logextension;
 
 public enum LoggingMode {
 
-	DEFAULT(false, true, false),
-	ONLY_AT_RETURN(true, false),
-	ONLY_AT_RETURN_SAFE(true, false, true);
+	DEFAULT(true, false, false), ONLY_AT_RETURN(false, true), ONLY_AT_RETURN_SAFE(false, true, true);
 
-	private final boolean skipLoggingAtEntering;
-	private final boolean skipArgumentsAtReturn;
+	private final boolean logAtMethodEntering;
+	private final boolean logArgumentsAtReturn;
 	private final boolean skipLogInjectionCheck;
 
-	private LoggingMode(boolean skipLoggingAtEntering, boolean skipArgumentsAtReturn, boolean skipLogInjectionCheck) {
-		this.skipLoggingAtEntering = skipLoggingAtEntering;
-		this.skipArgumentsAtReturn = skipArgumentsAtReturn;
+	private LoggingMode(boolean logAtMethodEntering, boolean logArgumentsAtReturn, boolean skipLogInjectionCheck) {
+		this.logAtMethodEntering = logAtMethodEntering;
+		this.logArgumentsAtReturn = logArgumentsAtReturn;
 		this.skipLogInjectionCheck = skipLogInjectionCheck;
 	}
 
@@ -20,12 +18,12 @@ public enum LoggingMode {
 		this(skipLoggingAtEntering, skipArgumentsAtReturn, false);
 	}
 
-	public boolean isSkipLoggingAtEntering() {
-		return skipLoggingAtEntering;
+	public boolean shouldLogAtMethodEntering() {
+		return logAtMethodEntering;
 	}
 
-	public boolean isSkipArgumentsAtReturn() {
-		return skipArgumentsAtReturn;
+	public boolean shouldLogArgumentsAtReturn() {
+		return logArgumentsAtReturn;
 	}
 
 	public boolean isSkipLogInjectionCheck() {
