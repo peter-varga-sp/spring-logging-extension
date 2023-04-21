@@ -2,7 +2,9 @@ package eu.springdev.logextension;
 
 public enum LoggingMode {
 
-	DEFAULT(true, false, false), ONLY_AT_RETURN(false, true), ONLY_AT_RETURN_SAFE(false, true, true);
+	DEFAULT(true, false, false),
+	ONLY_AT_RETURN(false, true),
+	ONLY_AT_RETURN_SAFE(false, true, true);
 
 	private final boolean logAtMethodEntering;
 	private final boolean logArgumentsAtReturn;

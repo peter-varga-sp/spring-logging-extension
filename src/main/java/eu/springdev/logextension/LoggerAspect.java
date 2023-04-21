@@ -1,9 +1,8 @@
 package eu.springdev.logextension;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-
+import eu.springdev.logextension.aop.JoinPointToAnnotationCache;
+import eu.springdev.logextension.security.SanitizerUtil;
+import jakarta.annotation.PostConstruct;
 import org.apache.commons.lang3.StringUtils;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -16,165 +15,187 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.logging.LogLevel;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+
 @Component
 @Aspect
 public class LoggerAspect {
 
-	private final AopHelperService aopHelperService;
+    private static final Logger log = LoggerFactory.getLogger(LoggerAspect.class);
 
-	private final MethodParameterExtractor methodParameterExtractor = new MethodParameterExtractor();
+    private final AopHelperService aopHelperService;
 
-	@Autowired
-	public LoggerAspect(AopHelperService aopHelperService) {
-		this.aopHelperService = aopHelperService;
-	}
+    private final JoinPointToAnnotationCache<Loggable> annotationCache = new JoinPointToAnnotationCache<>(
+            Loggable.class, true, 1000);
 
-	@Pointcut(value = "@annotation(at.h3g.common.logextension.NotLoggable)")
-	public void annotatedAsNotLoggable() {
-		// defines pointcut
-	}
+    private final MethodParameterExtractor methodParameterExtractor = new MethodParameterExtractor();
 
-	@Pointcut(value = "@annotation(at.h3g.common.logextension.Loggable)")
-	public void methodAnnotatedAsLoggable() {
-		// defines pointcut
-	}
+    @Autowired
+    public LoggerAspect(AopHelperService aopHelperService) {
+        this.aopHelperService = aopHelperService;
+    }
 
-	@Pointcut("@within(Loggable)") // this should work for the annotation service pointcut
-	public void inLoggableService() {
-		// defines pointcut
-	}
+    @PostConstruct
+    public void postConstruct() {
+        log.debug("LoggerAspect has been created");
+    }
 
-	@Pointcut("inLoggableService() &&! methodAnnotatedAsLoggable()")
-	public void anyPublicMethodOfLoggableService() {
-		// defines pointcut
-	}
+    @Pointcut(value = "@annotation(NotLoggable)")
+    public void annotatedAsNotLoggable() {
+        // defines pointcut
+    }
 
-	@Around("!annotatedAsNotLoggable() && anyPublicMethodOfLoggableService()")
-	public Object aroundPublicMethodOfLoggableClass(ProceedingJoinPoint joinPoint) throws Throwable {
-		return logMethodExecution(joinPoint);
-	}
+    @Pointcut(value = "@annotation(Loggable)")
+    public void methodAnnotatedAsLoggable() {
+        // defines pointcut
+    }
 
-	@Around("methodAnnotatedAsLoggable()")
-	public Object aroundLoggableMethod(ProceedingJoinPoint joinPoint) throws Throwable {
-		return logMethodExecution(joinPoint);
-	}
+    @Pointcut("@within(Loggable)") // this should work for the annotation service pointcut
+    public void inLoggableService() {
+        // defines pointcut
+    }
 
-	private Object logMethodExecution(ProceedingJoinPoint joinPoint) throws Throwable {
-		LoggableWrapper loggable = new LoggableWrapper(aopHelperService.getLoggableAnnotation(joinPoint));
+    @Pointcut("inLoggableService() &&! methodAnnotatedAsLoggable()")
+    public void anyPublicMethodOfLoggableService() {
+        // defines pointcut
+    }
 
-		Logger loggerOfDeclaringClass = getLoggerFor(joinPoint);
-		String classAndMethodSignature = aopHelperService.getClassAndMethodSignature(joinPoint);
+    @Around("!annotatedAsNotLoggable() && anyPublicMethodOfLoggableService()")
+    public Object aroundPublicMethodOfLoggableClass(ProceedingJoinPoint joinPoint) throws Throwable {
+        return logMethodExecution(joinPoint);
+    }
 
-		logMethodEntering(joinPoint, loggable, loggerOfDeclaringClass, classAndMethodSignature);
+    @Around("methodAnnotatedAsLoggable()")
+    public Object aroundLoggableMethod(ProceedingJoinPoint joinPoint) throws Throwable {
+        return logMethodExecution(joinPoint);
+    }
 
-		long methodExecutionStartTime = System.currentTimeMillis();
-		try {
-			Object returnValue = joinPoint.proceed();
+    private Object logMethodExecution(ProceedingJoinPoint joinPoint) throws Throwable {
+        Loggable loggableAnnotation = annotationCache.get(joinPoint);
+        LoggableWrapper loggable = new LoggableWrapper(loggableAnnotation);
 
-			// calculate elapsed time as soon as possible
-			long elapsedTimeInMs = System.currentTimeMillis() - methodExecutionStartTime;
-			logMethodReturn(joinPoint, loggable, loggerOfDeclaringClass, classAndMethodSignature, elapsedTimeInMs, returnValue);
-			return returnValue;
+        Logger loggerOfDeclaringClass = getLoggerFor(joinPoint);
+        String classAndMethodSignature = aopHelperService.getClassAndMethodSignature(joinPoint);
 
-		} catch (Throwable exception) { // NOPMD
-			logException(joinPoint, loggable, loggerOfDeclaringClass, classAndMethodSignature, exception);
-			throw exception;
-		}
-	}
+        logMethodEntering(joinPoint, loggable, loggerOfDeclaringClass, classAndMethodSignature);
 
-	private void logException(ProceedingJoinPoint joinPoint, LoggableWrapper loggable, Logger loggerOfDeclaringClass,
-			String classAndMethodSignature, Throwable e) {
-		String message = "{} occurred in {} with parameters {} exception message: {}";
-		String methodParameters = methodParameterExtractor.getMethodParameters(joinPoint, loggable);
-		Object[] messageArguments = { e.getClass().getName(), classAndMethodSignature, methodParameters,
-				e.getMessage() };
+        long methodExecutionStartTime = System.currentTimeMillis();
+        try {
+            Object returnValue = joinPoint.proceed();
 
-		doLog(loggerOfDeclaringClass, loggable.getLogLevelForException(), message, messageArguments);
-	}
+            // calculate elapsed time as soon as possible
+            long elapsedTimeInMs = System.currentTimeMillis() - methodExecutionStartTime;
+            logMethodReturn(joinPoint, loggable, loggerOfDeclaringClass, classAndMethodSignature, elapsedTimeInMs, returnValue);
+            return returnValue;
 
-	private void logMethodEntering(ProceedingJoinPoint joinPoint, LoggableWrapper loggable, Logger loggerOfDeclaringClass,
-			String classAndMethodSignature) {
+        } catch (Throwable exception) { // NOPMD
+            logException(joinPoint, loggable, loggerOfDeclaringClass, classAndMethodSignature, exception);
+            throw exception;
+        }
+    }
 
-		if (!loggable.shouldLogAtEntering()) {
-			return;
-		}
+    private void logException(ProceedingJoinPoint joinPoint, LoggableWrapper loggable, Logger loggerOfDeclaringClass,
+            String classAndMethodSignature, Throwable e) {
+        String message = "LoggerAspect: {} occurred in {} exception message: {} parameters: {} ";
+        String methodParameters = methodParameterExtractor.getMethodParameters(joinPoint, loggable);
+        Object[] messageArguments = {e.getClass().getName(), classAndMethodSignature, e.getMessage(), methodParameters};
 
-		if (loggable.shouldLogArgumentsAtEntering() && joinPoint.getArgs().length > 0) {
-			String parameters = methodParameterExtractor.getMethodParameters(joinPoint, loggable);
-			doLog(loggerOfDeclaringClass, loggable.getLogLevel(), "Entering {} parameters: {}", classAndMethodSignature, parameters);
-		} else {
-			doLog(loggerOfDeclaringClass, loggable.getLogLevel(), "Entering {}", classAndMethodSignature);
-		}
+        doLog(loggerOfDeclaringClass, loggable.getLogLevelForException(), message, messageArguments);
+    }
 
-	}
+    private void logMethodEntering(ProceedingJoinPoint joinPoint, LoggableWrapper loggable, Logger loggerOfDeclaringClass,
+            String classAndMethodSignature) {
 
-	private Logger getLoggerFor(JoinPoint joinPoint) {
-		return LoggerFactory.getLogger(joinPoint.getSignature().getDeclaringType());
-	}
+        if (!loggable.shouldLogAtEntering()) {
+            return;
+        }
 
-	@SuppressWarnings("rawtypes")
-	private void logMethodReturn(ProceedingJoinPoint joinPoint, LoggableWrapper loggable, Logger loggerOfDeclaringClass,
-			String classAndMethodSignature, long elapsedTimeInMs, Object returnValue) {
+        if (loggable.shouldLogArgumentsAtEntering() && joinPoint.getArgs().length > 0) {
+            String parameters = methodParameterExtractor.getMethodParameters(joinPoint, loggable);
+            doLog(loggerOfDeclaringClass, loggable.getLogLevel(), "Entering {} parameters: {}", classAndMethodSignature, parameters);
+        } else {
+            doLog(loggerOfDeclaringClass, loggable.getLogLevel(), "Entering {}", classAndMethodSignature);
+        }
 
-		if (!loggable.shouldLogAtReturn()) {
-			return;
-		}
+    }
 
-		String message = "Finished {}";
-		List<Object> argumentsList = new ArrayList<>(4);
-		argumentsList.add(classAndMethodSignature);
-		
-		if (joinPoint.getArgs().length > 0 && loggable.shouldLogArgumentsAtReturn()) {
-			message = message + " parameters: {}";
-			argumentsList.add(methodParameterExtractor.getMethodParameters(joinPoint, loggable));
-		}
+    private Logger getLoggerFor(JoinPoint joinPoint) {
+        return LoggerFactory.getLogger(joinPoint.getSignature().getDeclaringType());
+    }
 
-		if (loggable.shouldLogExecutionTime()) {
-			message = message + " in {} ms";
-			argumentsList.add(elapsedTimeInMs);
-		}
+    @SuppressWarnings("rawtypes")
+    private void logMethodReturn(ProceedingJoinPoint joinPoint, LoggableWrapper loggable, Logger loggerOfDeclaringClass,
+            String classAndMethodSignature, long elapsedTimeInMs, Object returnValue) {
 
-		if (loggable.shouldLogResultAtReturn()) {
-			if (logCollectionSize(loggable, returnValue)) {
-				message = message + " with result " + returnValue.getClass().getSimpleName() + " size: {}";
-				argumentsList.add(((Collection) returnValue).size());
-			} else {
-				message = message + " with result: {}";
-				argumentsList.add(getResultAsString(returnValue, loggable));
-			}
-		}
+        if (!loggable.shouldLogAtReturn()) {
+            return;
+        }
 
-		doLog(loggerOfDeclaringClass, loggable.getLogLevel(), message, argumentsList.toArray());
-	}
+        String message = "Finished {}";
+        List<Object> argumentsList = new ArrayList<>(4);
+        argumentsList.add(classAndMethodSignature);
 
-	private boolean logCollectionSize(LoggableWrapper loggable, Object returnValue) {
-		return returnValue != null && loggable.shouldLogResultCollectionSize() && returnValue instanceof Collection;
-	}
+        if (joinPoint.getArgs().length > 0 && loggable.shouldLogArgumentsAtReturn()) {
+            message = message + " parameters: {}";
+            argumentsList.add(methodParameterExtractor.getMethodParameters(joinPoint, loggable));
+        }
 
-	private Object getResultAsString(Object returnValue, LoggableWrapper loggable) {
-		if (returnValue != null && loggable.getMaxLengthOfResultObject() > 0) {
-			return StringUtils.left(returnValue.toString(), loggable.getMaxLengthOfResultObject());
-		}
+        if (loggable.shouldLogExecutionTime()) {
+            message = message + " in {} ms";
+            argumentsList.add(elapsedTimeInMs);
+        }
 
-		return returnValue;
-	}
+        if (loggable.shouldLogResultAtReturn()) {
+            if (logCollectionSize(loggable, returnValue)) {
+                message = message + " with result " + returnValue.getClass().getSimpleName() + " size: {}";
+                argumentsList.add(((Collection) returnValue).size());
+            } else {
+                message = message + " with result: {}";
+                argumentsList.add(getResultAsSafeString(loggable, returnValue));
+            }
+        }
 
-	private void doLog(Logger loggerOfDeclaringClass, LogLevel logLevel, String message, Object... arguments) {
-		if (logLevel.equals(LogLevel.INFO)) {
-			loggerOfDeclaringClass.info(message, arguments);
+        doLog(loggerOfDeclaringClass, loggable.getLogLevel(), message, argumentsList.toArray());
+    }
 
-		} else if (logLevel.equals(LogLevel.WARN)) {
-			loggerOfDeclaringClass.warn(message, arguments);
+    private Object getResultAsSafeString(LoggableWrapper loggable, Object returnValue) {
+        return SanitizerUtil.toSafeStringWithoutLineBreaks(getResultAsString(returnValue, loggable));
+    }
 
-		} else if (logLevel.equals(LogLevel.ERROR)) {
-			loggerOfDeclaringClass.error(message, arguments);
+    private boolean logCollectionSize(LoggableWrapper loggable, Object returnValue) {
+        return returnValue != null && loggable.shouldLogResultCollectionSize() && returnValue instanceof Collection;
+    }
 
-		} else if (logLevel.equals(LogLevel.DEBUG)) {
-			loggerOfDeclaringClass.debug(message, arguments);
+    private String getResultAsString(Object returnValue, LoggableWrapper loggable) {
+        if (returnValue == null) {
+            return null;
+        }
 
-		} else {
-			loggerOfDeclaringClass.info(message, arguments);
-		}
-	}
+        if (loggable.getMaxLengthOfResultObject() > 0) {
+            return StringUtils.left(returnValue.toString(), loggable.getMaxLengthOfResultObject());
+        }
+
+        return returnValue.toString();
+    }
+
+    private void doLog(Logger loggerOfDeclaringClass, LogLevel logLevel, String message, Object... arguments) {
+        if (logLevel.equals(LogLevel.INFO)) {
+            loggerOfDeclaringClass.info(message, arguments);
+
+        } else if (logLevel.equals(LogLevel.WARN)) {
+            loggerOfDeclaringClass.warn(message, arguments);
+
+        } else if (logLevel.equals(LogLevel.ERROR)) {
+            loggerOfDeclaringClass.error(message, arguments);
+
+        } else if (logLevel.equals(LogLevel.DEBUG)) {
+            loggerOfDeclaringClass.debug(message, arguments);
+
+        } else {
+            loggerOfDeclaringClass.info(message, arguments);
+        }
+    }
 
 }
